@@ -1,25 +1,40 @@
 name: Update visitor map
 
+# Once a day: read the counters, commit what changed, publish visitors.json.
+# The publishing is done here rather than by "deploy from a branch", because
+# commits pushed with the workflow's own token do not start a Pages build.
 on:
   schedule:
-    - cron: "23 9 * * *"   # once a day, 09:23 UTC
+    - cron: "23 9 * * *"   # 09:23 UTC
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
-concurrency: update-visitor-map
+concurrency:
+  group: update-visitor-map
+  cancel-in-progress: false
 
 jobs:
   update:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
 
+      # a push only republishes what was pushed
       - name: Read the counters
+        if: github.event_name != 'push'
         run: python3 aggregate.py
 
       - name: Commit what changed
+        if: github.event_name != 'push'
         run: |
           git add visitors.json slots.json
           if git diff --cached --quiet; then
@@ -30,3 +45,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Update visitor map"
           git push
+
+      - name: Collect what gets published
+        run: |
+          mkdir _site
+          cp visitors.json _site/
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

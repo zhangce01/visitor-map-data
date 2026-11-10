@@ -3,8 +3,8 @@
 Where visitors to [zhangce01.github.io](https://zhangce01.github.io/) come
 from. The homepage's globe reads
 [`visitors.json`](https://zhangce01.github.io/visitor-map-data/visitors.json)
-from this repository's GitHub Pages site, and a workflow here rebuilds that
-file once a day.
+from this repository's GitHub Pages site, and a workflow here rebuilds and
+publishes that file once a day.
 
 - **`visitors.json`** is what the globe draws: per-country totals and
   `[cell, country, visits]` places, where a cell is one degree of latitude by
