@@ -19,6 +19,10 @@ publishes that file once a day.
   seconds, most of which are crawlers.
 - **`slots.json`** is the script's memory of which counters it has already
   found.
+- **`history.json`** keeps each day's reading of the counters for the last 45
+  days. The "in the last 30 days" figure is today's reading minus the one from
+  30 days ago, plus what is left of the last 30 days of the Google Analytics
+  history (`recent` in `seed.json`), which is let go a day's share per day.
 - **`countries.json`** gives each ISO country code a display name and a
   fallback centre (from [mledoze/countries](https://github.com/mledoze/countries)).
 
