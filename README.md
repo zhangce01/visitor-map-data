@@ -27,3 +27,8 @@ publishes that file once a day.
   fallback centre (from [mledoze/countries](https://github.com/mledoze/countries)).
 
 Run by hand with `python3 aggregate.py`, or from the Actions tab.
+
+Abacus is a free service and has bad hours. The script tries each counter
+several times; if it still cannot read one, `visitors.json` and `history.json`
+stay as the last good reading wrote them. The run only fails after a week
+without a good reading.

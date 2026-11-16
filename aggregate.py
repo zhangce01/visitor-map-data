@@ -19,12 +19,19 @@ is its visits in the last 30 days (worked out from history.json, each day's
 reading of the counters). Standard library only. It is slow on purpose: Abacus
 allows 30 requests per 10 seconds. Reading a counter also renews its six-month
 expiry.
+
+Abacus has spells of 500s and very slow answers. Each counter is tried several
+times; if one still cannot be read, visitors.json and history.json are left as
+the last good reading wrote them. That ends the run quietly unless there has
+been no good reading for GIVE_UP days.
 """
 import collections
 import datetime
+import http.client
 import json
 import math
 import os
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -35,6 +42,9 @@ PAUSE = 0.4
 CELLS = 180 * 360
 WINDOW = 30      # days that count as recent
 KEEP = 45        # days of readings kept in history.json
+TRIES = 6        # per counter, for failures that pass on their own
+BUDGET = 25 * 60 # seconds a run may take before it gives up for the day
+GIVE_UP = 7      # days without a reading before a run is allowed to fail
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "visitors.json")
@@ -43,24 +53,43 @@ SEED = os.path.join(HERE, "seed.json")          # {"places": [[cell or -1, code,
 HISTORY = os.path.join(HERE, "history.json")    # day -> {code: the counters' total that day}
 TABLE = os.path.join(HERE, "countries.json")    # code -> [name, lat, lon]
 
+START = time.monotonic()
+
+
+class Unreachable(Exception):
+    """a counter could not be read, even after trying again"""
+
 
 def get(key):
     """value of a counter, or None if it does not exist"""
     url = "%s/get/%s/%s" % (BASE, SPACE, key)
-    for attempt in range(6):
+    wait = 5
+    for attempt in range(TRIES):
+        if time.monotonic() - START > BUDGET:
+            raise Unreachable("out of time at " + key)
         time.sleep(PAUSE)
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "zhangce01.github.io visitor map"})
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with urllib.request.urlopen(req, timeout=45) as r:
                 return int(json.load(r)["value"])
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 return None
             if e.code == 429:
+                why = "rate limited"
                 time.sleep(float(e.headers.get("Retry-After") or 10) + 1)
                 continue
-            raise
-    raise RuntimeError("still rate limited: " + key)
+            if e.code < 500:
+                raise
+            why = "HTTP %d" % e.code
+        except (OSError, http.client.HTTPException, ValueError, KeyError) as e:
+            # no answer, a dropped connection, or an answer that is not a count
+            why = type(e).__name__
+        if attempt < TRIES - 1:
+            print("%s: %s, trying again in %d s" % (key, why, wait), flush=True)
+            time.sleep(wait)
+            wait = min(wait * 2, 60)
+    raise Unreachable("%s: %s" % (key, why))
 
 
 def load(path, default):
@@ -170,4 +199,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Unreachable as e:
+        # visitors.json and history.json are only written after every counter
+        # has been read, so the last good reading is still what is published.
+        last = max(load(HISTORY, {}), default=None)
+        idle = (datetime.date.today() - datetime.date.fromisoformat(last)).days if last else 0
+        print("::warning::Could not read the counters (%s). Keeping the reading from %s."
+              % (e, last or "the seed"))
+        sys.exit(1 if idle > GIVE_UP else 0)
